@@ -3,6 +3,8 @@ export type TouchPad = {
   right: boolean;
   gas: boolean;
   brake: boolean;
+  steer: number;
+  steerOn: boolean;
 };
 
 const held = new Set<string>();
@@ -38,8 +40,13 @@ export function setHeldKeys(codes: string[]) {
 
 export function readInput(touch: TouchPad) {
   let steer = 0;
-  if (held.has("KeyA") || held.has("ArrowLeft") || touch.left) steer += 1;
-  if (held.has("KeyD") || held.has("ArrowRight") || touch.right) steer -= 1;
+  if (held.has("KeyA") || held.has("ArrowLeft")) steer += 1;
+  if (held.has("KeyD") || held.has("ArrowRight")) steer -= 1;
+  if (touch.steerOn) steer += touch.steer;
+  else {
+    if (touch.left) steer += 1;
+    if (touch.right) steer -= 1;
+  }
   steer = Math.max(-1, Math.min(1, steer));
   const throttle = held.has("KeyW") || held.has("ArrowUp") || touch.gas ? 1 : 0;
   const brake = held.has("KeyS") || held.has("ArrowDown") || held.has("Space") || touch.brake ? 1 : 0;

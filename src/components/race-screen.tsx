@@ -1,10 +1,20 @@
 import { Volume2, VolumeX } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { LAPS, formatTime, kmh, type Racer } from "@/game/catalog";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { LAPS, formatTime, type Racer } from "@/game/catalog";
 import { isMuted, playFanfare, setMuted, unlockAudio } from "@/game/audio";
 import type { TouchPad } from "@/game/input";
 import type { HudSnapshot } from "@/game/sim";
 import { outlineOf, trackById } from "@/game/track";
+
+type NetPose = {
+  id: string;
+  s: number;
+  offset: number;
+  speed: number;
+  laps: number;
+  yaw: number;
+  at: number;
+};
 
 type Props = {
   racers: Racer[];
@@ -12,11 +22,22 @@ type Props = {
   trackId: string;
   onExit: () => void;
   onAgain: () => void;
+  net?: {
+    pull: () => NetPose[];
+    push: (pose: { s: number; offset: number; speed: number; laps: number; yaw: number }) => void;
+  } | null;
 };
 
-const emptyTouch = (): TouchPad => ({ left: false, right: false, gas: false, brake: false });
+const emptyTouch = (): TouchPad => ({
+  left: false,
+  right: false,
+  gas: false,
+  brake: false,
+  steer: 0,
+  steerOn: false,
+});
 
-export function RaceScreen({ racers, mode, trackId, onExit, onAgain }: Props) {
+export function RaceScreen({ racers, mode, trackId, onExit, onAgain, net = null }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const touch = useRef<TouchPad>(emptyTouch());
   const watchId = useRef<string | null>(null);
@@ -38,6 +59,7 @@ export function RaceScreen({ racers, mode, trackId, onExit, onAgain }: Props) {
         trackId,
         touch,
         watchId,
+        net: net ?? undefined,
         onHud: (next) => {
           if (!dead) setHud(next);
         },
@@ -87,7 +109,7 @@ export function RaceScreen({ racers, mode, trackId, onExit, onAgain }: Props) {
           <p className="font-mono text-xs text-gold">{circuit.name}</p>
         </div>
         <div className="bg-asphalt/80 px-3 py-2 text-right">
-          <p className="font-display text-4xl font-bold leading-none">{focus ? kmh(focus.speed) : 0}</p>
+          <p className="font-display text-4xl font-bold leading-none">{focus ? Math.round(focus.displaySpeed) : 0}</p>
           <p className="font-mono text-xs text-mist">KM/H</p>
         </div>
       </header>
@@ -137,6 +159,10 @@ export function RaceScreen({ racers, mode, trackId, onExit, onAgain }: Props) {
             {hud.lights >= 4 ? "YA" : hud.lights === 1 ? "EN SUS MARCAS" : "LISTOS"}
           </p>
         </div>
+      ) : hud?.alert ? (
+        <p className="pointer-events-none absolute inset-x-0 top-1/3 z-10 text-center font-display text-3xl font-bold text-gold">
+          {hud.alert}
+        </p>
       ) : null}
 
       <button
@@ -149,11 +175,16 @@ export function RaceScreen({ racers, mode, trackId, onExit, onAgain }: Props) {
       </button>
 
       {mode === "drive" && hud?.phase !== "finished" ? (
-        <div className="safe-b absolute inset-x-0 bottom-0 z-20 grid grid-cols-4 gap-2 p-3">
-          <Hold label="IZQ" onHold={(down) => hold("left", down)} />
-          <Hold label="FRENO" onHold={(down) => hold("brake", down)} />
-          <Hold label="GAS" accent onHold={(down) => hold("gas", down)} />
-          <Hold label="DER" onHold={(down) => hold("right", down)} />
+        <div className="safe-b pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end gap-2 p-3">
+          <SteerPad
+            onSteer={(steer, steerOn) => {
+              touch.current = { ...touch.current, steer, steerOn, left: false, right: false };
+            }}
+          />
+          <div className="pointer-events-auto flex w-[34%] max-w-36 shrink-0 flex-col gap-2">
+            <Hold label="FRENO" onHold={(down) => hold("brake", down)} />
+            <Hold label="GAS" accent tall onHold={(down) => hold("gas", down)} />
+          </div>
         </div>
       ) : null}
 
@@ -195,7 +226,7 @@ export function RaceScreen({ racers, mode, trackId, onExit, onAgain }: Props) {
                     {row.alias}
                   </td>
                   <td className="border-t border-line py-2">{formatTime(row.bestLap)}</td>
-                  <td className="border-t border-line py-2 text-right">{kmh(row.maxSpeed)}</td>
+                  <td className="border-t border-line py-2 text-right">{Math.round(row.displayMax)}</td>
                   <td className="border-t border-line py-2 text-right">{row.overtakes}</td>
                 </tr>
               ))}
@@ -234,7 +265,17 @@ export function RaceScreen({ racers, mode, trackId, onExit, onAgain }: Props) {
   );
 }
 
-function Hold({ label, onHold, accent = false }: { label: string; onHold: (down: boolean) => void; accent?: boolean }) {
+function Hold({
+  label,
+  onHold,
+  accent = false,
+  tall = false,
+}: {
+  label: string;
+  onHold: (down: boolean) => void;
+  accent?: boolean;
+  tall?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -246,12 +287,63 @@ function Hold({ label, onHold, accent = false }: { label: string; onHold: (down:
       onPointerCancel={() => onHold(false)}
       onLostPointerCapture={() => onHold(false)}
       className={
-        "h-16 font-display text-sm font-bold " +
+        "touch-none font-display text-sm font-bold " +
+        (tall ? "h-24 " : "h-14 ") +
         (accent ? "bg-gold text-asphalt" : "border border-line bg-asphalt/80 text-cream")
       }
     >
       {label}
     </button>
+  );
+}
+
+function SteerPad({ onSteer }: { onSteer: (steer: number, active: boolean) => void }) {
+  const pad = useRef<HTMLDivElement>(null);
+  const [visual, setVisual] = useState(0);
+
+  function apply(event: ReactPointerEvent<HTMLDivElement>, active: boolean) {
+    const box = pad.current?.getBoundingClientRect();
+    if (!box || !active) {
+      setVisual(0);
+      onSteer(0, false);
+      return;
+    }
+    const x = (event.clientX - box.left) / box.width;
+    let steer = (0.5 - x) * 2.2;
+    if (Math.abs(steer) < 0.07) steer = 0;
+    steer = Math.max(-1, Math.min(1, steer));
+    setVisual(steer);
+    onSteer(steer, true);
+  }
+
+  return (
+    <div
+      ref={pad}
+      className="pointer-events-auto relative h-40 min-w-0 flex-1 touch-none border border-line bg-asphalt/75"
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        apply(event, true);
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) apply(event, true);
+      }}
+      onPointerUp={(event) => apply(event, false)}
+      onPointerCancel={(event) => apply(event, false)}
+    >
+      <div className="pointer-events-none absolute inset-0 grid place-items-center">
+        <div
+          className="grid h-28 w-28 place-items-center rounded-full border-4 border-gold/80 bg-asphalt"
+          style={{ transform: `rotate(${(-visual * 70).toFixed(1)}deg)` }}
+        >
+          <span className="h-10 w-1.5 -translate-y-6 bg-gold" />
+        </div>
+      </div>
+      <span className="pointer-events-none absolute bottom-2 left-3 font-mono text-[10px] text-mist">IZQ</span>
+      <span className="pointer-events-none absolute right-3 bottom-2 font-mono text-[10px] text-mist">DER</span>
+      <span className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 font-mono text-[10px] text-gold">
+        VOLANTE
+      </span>
+    </div>
   );
 }
 

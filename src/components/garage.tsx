@@ -1,19 +1,21 @@
 import { ChevronDown, ChevronUp, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CarPreview } from "@/components/car-preview";
-import { CARS, LIVERIES, MAX_RACERS, carById, statBars, type Racer } from "@/game/catalog";
+import { CARS, KLASS_LABEL, KLASS_ORDER, LIVERIES, MAX_RACERS, carById, carsIn, ficha, statBars, type Klass, type Racer } from "@/game/catalog";
 import { DEFAULT_RACERS, freshAlias, freshCar, freshColor, loadGrid, loadTrackId, saveGrid, saveTrackId } from "@/game/storage";
 import { CIRCUITS, outlineOf, trackById, type Track } from "@/game/track";
 
 type Props = {
   onDrive: (racers: Racer[], trackId: string) => void;
   onWatch: (racers: Racer[], trackId: string) => void;
+  onBack: () => void;
 };
 
-export function Garage({ onDrive, onWatch }: Props) {
+export function Garage({ onDrive, onWatch, onBack }: Props) {
   const [racers, setRacers] = useState<Racer[]>(DEFAULT_RACERS);
   const [selectedId, setSelectedId] = useState(DEFAULT_RACERS[0].id);
   const [trackId, setTrackId] = useState(CIRCUITS[0].id);
+  const [klass, setKlass] = useState<Klass>("auto");
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -21,6 +23,7 @@ export function Garage({ onDrive, onWatch }: Props) {
     if (saved) {
       setRacers(saved);
       setSelectedId(saved[0]?.id ?? DEFAULT_RACERS[0].id);
+      setKlass(carById(saved[0]?.carId ?? CARS[0].id).klass);
     }
     setTrackId(loadTrackId());
     setReady(true);
@@ -96,9 +99,9 @@ export function Garage({ onDrive, onWatch }: Props) {
           <p className="font-mono text-xs tracking-widest text-gold">GRILLA</p>
           <h1 className="font-display text-3xl font-bold leading-none text-cream">ASFALTO '98</h1>
         </div>
-        <p className="font-mono text-xs text-mist">
-          {racers.length}/{MAX_RACERS}
-        </p>
+        <button type="button" onClick={onBack} className="h-11 px-3 text-xs text-mist">
+          Menú
+        </button>
       </header>
 
       {selected ? (
@@ -107,10 +110,11 @@ export function Garage({ onDrive, onWatch }: Props) {
           <div className="mt-3 flex items-baseline justify-between gap-3">
             <div>
               <h2 className="font-display text-2xl font-semibold text-cream">{car.name}</h2>
-              <p className="text-xs text-mist">{car.klass}</p>
+              <p className="text-xs text-mist">{car.klassLabel}</p>
             </div>
             <p className="max-w-40 text-right text-xs leading-snug text-mist">{car.blurb}</p>
           </div>
+          <p className="mt-2 font-mono text-xs text-gold">{ficha(car)}</p>
           <div className="mt-3 flex flex-col gap-2">
             <Bar label="VEL" value={bars.vel} />
             <Bar label="ACEL" value={bars.acel} />
@@ -130,7 +134,25 @@ export function Garage({ onDrive, onWatch }: Props) {
           />
 
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {CARS.map((option) => {
+            {KLASS_ORDER.map((option) => {
+              const on = option === klass;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setKlass(option)}
+                  className={
+                    "h-11 shrink-0 border px-3 font-display text-sm " +
+                    (on ? "border-gold bg-gold text-asphalt" : "border-line bg-panel text-cream")
+                  }
+                >
+                  {KLASS_LABEL[option]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {carsIn(klass).map((option) => {
               const on = option.id === selected.carId;
               return (
                 <button
@@ -176,7 +198,14 @@ export function Garage({ onDrive, onWatch }: Props) {
           const on = racer.id === selected?.id;
           return (
             <li key={racer.id} className={"border px-3 py-2 " + (on ? "border-gold bg-panel" : "border-line")}>
-              <button type="button" onClick={() => setSelectedId(racer.id)} className="flex w-full items-center gap-3 text-left">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedId(racer.id);
+                  setKlass(spec.klass);
+                }}
+                className="flex w-full items-center gap-3 text-left"
+              >
                 <span className="w-5 font-mono text-xs text-mist">{index + 1}</span>
                 <span className="h-8 w-3 shrink-0" style={{ background: racer.color }} />
                 <span className="min-w-0 flex-1">
@@ -285,7 +314,7 @@ export function Garage({ onDrive, onWatch }: Props) {
         {!canStart ? <p className="col-span-2 text-center text-xs text-mist">Sumá al menos dos pilotos.</p> : null}
         {canStart ? (
           <p className="col-span-2 text-center text-xs text-mist">
-            Deslizá para ver todas las pistas. YO maneja. Ver copa corre sola.
+            Deslizá para ver todas las pistas. YO maneja el volante: el auto no dobla solo.
           </p>
         ) : null}
         </div>

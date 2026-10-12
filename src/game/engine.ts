@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { createCar, setBrakes } from "@/game/cars";
 import { bindKeyboard, installProbe, readInput, type TouchPad } from "@/game/input";
-import { createSim, snapshot, stepSim, type HudSnapshot, type Sim } from "@/game/sim";
+import { applyRemote, createSim, snapshot, stepSim, type HudSnapshot, type Sim } from "@/game/sim";
 import { sampleAt, trackById, type Track } from "@/game/track";
 import { playFanfare, resumeAudio, setEngineSpeed, startRaceAudio, stopRaceAudio } from "@/game/audio";
 import type { Racer } from "@/game/catalog";
@@ -292,6 +292,10 @@ export function mountRace(
     touch: { current: TouchPad };
     watchId: { current: string | null };
     onHud: (hud: HudSnapshot) => void;
+    net?: {
+      pull: () => { id: string; s: number; offset: number; speed: number; laps: number; yaw: number; at: number }[];
+      push: (pose: { s: number; offset: number; speed: number; laps: number; yaw: number }) => void;
+    };
   },
 ) {
   const renderer = new THREE.WebGLRenderer({
@@ -356,6 +360,7 @@ export function mountRace(
   let acc = 0;
   let hudAcc = 0;
   let fanfareSent = false;
+  let netAcc = 0;
   let running = true;
   let raf = 0;
 
@@ -367,9 +372,36 @@ export function mountRace(
     if (delta > 0.1) delta = 0.1;
     acc += delta;
     const step = 1 / 60;
+    const nowMs = performance.now();
+    if (opts.net) {
+      const fresh = opts.net.pull().filter((pose) => nowMs - pose.at < 450);
+      const live = new Set(fresh.map((pose) => pose.id));
+      for (const car of sim.cars) {
+        if (!car.player) car.remote = live.has(car.id);
+      }
+    }
     while (acc >= step) {
       stepSim(sim, step, readInput(opts.touch.current));
       acc -= step;
+    }
+    if (opts.net) {
+      for (const pose of opts.net.pull()) {
+        if (nowMs - pose.at < 450) applyRemote(sim, pose);
+      }
+      netAcc += delta;
+      if (netAcc > 0.08) {
+        netAcc = 0;
+        const human = player();
+        if (human) {
+          opts.net.push({
+            s: human.s,
+            offset: human.offset,
+            speed: human.speed,
+            laps: human.laps,
+            yaw: human.yaw,
+          });
+        }
+      }
     }
 
     for (const car of sim.cars) {
@@ -377,6 +409,11 @@ export function mountRace(
       if (!group) continue;
       group.position.set(car.x, 0, car.z);
       group.rotation.y = car.yaw + Math.PI;
+      group.rotation.z = 0;
+      group.rotation.x = 0;
+      group.traverse((obj) => {
+        if (obj.userData.role === "steer") obj.rotation.y = car.wheel * 0.62;
+      });
     }
     const inputNow = readInput(opts.touch.current);
     const human = player();
@@ -393,16 +430,19 @@ export function mountRace(
     if (focus) {
       const fx = -Math.sin(focus.yaw);
       const fz = -Math.cos(focus.yaw);
-      const dist = sim.phase === "finished" ? 16 : sim.mode === "watch" ? 12 : 9.2;
-      const height = sim.phase === "finished" ? 7.2 : sim.mode === "watch" ? 5.4 : 3.8;
-      desired.set(focus.x - fx * dist, height, focus.z - fz * dist);
-      look.set(focus.x + fx * 8, 1.05, focus.z + fz * 8);
+      const rx = Math.cos(focus.yaw);
+      const rz = -Math.sin(focus.yaw);
+      const dist = sim.phase === "finished" ? 16 : sim.mode === "watch" ? 12 : 8.4;
+      const height = sim.phase === "finished" ? 7.2 : sim.mode === "watch" ? 5.4 : 3.5;
+      const side = focus.wheel * 1.15;
+      desired.set(focus.x - fx * dist + rx * side, height, focus.z - fz * dist + rz * side);
+      look.set(focus.x + fx * 7, 1.05, focus.z + fz * 7);
       if (!camReady) {
         camera.position.copy(desired);
         lookSmooth.copy(look);
         camReady = true;
       }
-      const k = 1 - Math.exp(-3.4 * delta);
+      const k = 1 - Math.exp(-6.5 * delta);
       camera.position.lerp(desired, k);
       lookSmooth.lerp(look, k);
       camera.lookAt(lookSmooth);
@@ -454,7 +494,6 @@ export function mountRace(
       geos.forEach((geo) => geo.dispose());
       mats.forEach((item) => item.dispose());
       renderer.dispose();
-      renderer.forceContextLoss();
     },
   };
 }
@@ -517,7 +556,6 @@ export function mountPreview(canvas: HTMLCanvasElement, carId: string, color: st
         else material.dispose();
       });
       renderer.dispose();
-      renderer.forceContextLoss();
     },
   };
 }

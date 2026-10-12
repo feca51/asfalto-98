@@ -1,10 +1,17 @@
+export type Klass = "auto" | "util" | "moto" | "ev" | "tito" | "mono" | "tuk";
+
 export type CarDef = {
   id: string;
   name: string;
-  klass: string;
+  klass: Klass;
+  klassLabel: string;
+  vmax: number;
+  zero: number;
+  peso: number;
   top: number;
   accel: number;
   grip: number;
+  turn: number;
   blurb: string;
 };
 
@@ -17,63 +24,83 @@ export type Racer = {
 };
 
 export const LAPS = 3;
-export const MAX_RACERS = 10;
+export const MAX_RACERS = 8;
+
+export const KLASS_ORDER: Klass[] = ["auto", "util", "moto", "ev", "tito", "mono", "tuk"];
+
+export const KLASS_LABEL: Record<Klass, string> = {
+  auto: "Autos",
+  util: "Utilitarios",
+  moto: "Motos",
+  ev: "Eléctricos",
+  tito: "Titos",
+  mono: "Monopatines",
+  tuk: "Tuk-tuk",
+};
+
+const TURN: Record<Klass, number> = {
+  auto: 1,
+  util: 0.68,
+  moto: 1.42,
+  ev: 1.08,
+  tito: 1.28,
+  mono: 1.62,
+  tuk: 0.6,
+};
+
+const GRIP: Record<Klass, number> = {
+  auto: 0.8,
+  util: 0.56,
+  moto: 0.93,
+  ev: 0.86,
+  tito: 0.72,
+  mono: 0.5,
+  tuk: 0.52,
+};
+
+function ride(klass: Klass, vmax: number, zero: number) {
+  const top = 14 + (vmax / 270) * 50;
+  const accel = klass === "ev" ? 30 : klass === "moto" ? 27 : Math.max(9, 34 - zero * 1.4);
+  return { top, accel, grip: GRIP[klass], turn: TURN[klass] };
+}
+
+function spec(
+  id: string,
+  name: string,
+  klass: Klass,
+  vmax: number,
+  zero: number,
+  peso: number,
+  blurb: string,
+): CarDef {
+  return {
+    id,
+    name,
+    klass,
+    klassLabel: KLASS_LABEL[klass],
+    vmax,
+    zero,
+    peso,
+    blurb,
+    ...ride(klass, vmax, zero),
+  };
+}
 
 export const CARS: CarDef[] = [
-  {
-    id: "velonce",
-    name: "Velonce",
-    klass: "Cuña",
-    top: 64,
-    accel: 18,
-    grip: 0.7,
-    blurb: "Punta en las rectas. Se abre en la curva.",
-  },
-  {
-    id: "nite",
-    name: "Nite RX",
-    klass: "Coupé",
-    top: 56,
-    accel: 23,
-    grip: 0.84,
-    blurb: "Sale rápido y no se asusta del ápice.",
-  },
-  {
-    id: "kuro",
-    name: "Kuro",
-    klass: "Rally",
-    top: 51,
-    accel: 21,
-    grip: 0.96,
-    blurb: "El que frena más tarde y sale pegado.",
-  },
-  {
-    id: "alba",
-    name: "Alba",
-    klass: "Proto",
-    top: 66,
-    accel: 16,
-    grip: 0.76,
-    blurb: "Ala grande, mucha punta, poco torque.",
-  },
-  {
-    id: "thunder",
-    name: "Thunder 8",
-    klass: "Muscle",
-    top: 58,
-    accel: 26,
-    grip: 0.62,
-    blurb: "Empuja como un camión. Odia el curvón.",
-  },
-  {
-    id: "lumen",
-    name: "Lumen S",
-    klass: "Super",
-    top: 61,
-    accel: 20,
-    grip: 0.88,
-    blurb: "Equilibrado. Gana si nadie se equivoca.",
-  },
+  spec("calle", "Calle 1.6", "auto", 185, 9.6, 1140, "Sedán de calle. Frená y doblá, no lo tires."),
+  spec("cupe", "Cupé 3.0", "auto", 262, 4.8, 1520, "Punta de verdad. Se abre si entrás pasado."),
+  spec("furgon", "Furgón", "util", 148, 14.8, 1980, "Alto y pesado. La curva hay que pedirla antes."),
+  spec("pickup", "Pickup", "util", 172, 11.4, 2140, "Trocha ancha. Aguanta, pero no gira."),
+  spec("naked", "Naked", "moto", 228, 3.3, 189, "Sale como un tiro y se acuesta en el ápice."),
+  spec("scooter", "Scooter", "moto", 105, 9.8, 132, "Liviana. Enrosca, no alcanza en la recta."),
+  spec("sedan-ev", "Sedán EV", "ev", 201, 4.4, 1890, "Torque desde cero. Pesa, pero pega."),
+  spec("city-ev", "City EV", "ev", 150, 7.2, 1420, "Ciudad. Empuja ya y se queda sin punta."),
+  spec("tito", "Tito", "tito", 45, 18, 380, "El micro de vereda. 45 km/h y a rezar."),
+  spec("tito-plus", "Tito Plus", "tito", 65, 14, 450, "Un poco más de batería. Sigue siendo un Tito."),
+  spec("mono", "Monopatín", "mono", 25, 22, 12, "25 km/h reales. En Monza es una declaración."),
+  spec("mono-pro", "Monopatín Pro", "mono", 35, 16, 16, "Rueda grande. Igual no es un auto."),
+  spec("tuk", "Tuk-tuk", "tuk", 70, 16, 420, "Tres ruedas. Se abre y no perdona."),
+  spec("tuk-d", "Tuk diésel", "tuk", 85, 13.5, 560, "El de motor. Un poco más, igual baila."),
 ];
 
 export const LIVERIES: { id: string; name: string; hex: string }[] = [
@@ -90,23 +117,32 @@ export function carById(id: string): CarDef {
   return byId.get(id) ?? CARS[0];
 }
 
+export function carsIn(klass: Klass): CarDef[] {
+  return CARS.filter((car) => car.klass === klass);
+}
+
 export function statBars(car: CarDef) {
   return {
-    vel: car.top / 66,
-    acel: car.accel / 26,
+    vel: car.vmax / 270,
+    acel: Math.min(1, car.accel / 32),
     agarre: car.grip,
   };
 }
 
+export function ficha(car: CarDef): string {
+  const sprint = car.zero >= 16 ? "no llega a 100" : `0-100 ${car.zero.toFixed(1)} s`;
+  return `${car.vmax} km/h · ${sprint} · ${car.peso} kg`;
+}
+
 export const DEFAULT_RACERS: Racer[] = [
-  { id: "r1", alias: "VOS", carId: "velonce", color: "#e23d3d", player: true },
-  { id: "r2", alias: "NITO", carId: "nite", color: "#3ec6d6", player: false },
-  { id: "r3", alias: "LILA", carId: "kuro", color: "#efe6d2", player: false },
-  { id: "r4", alias: "KENZO", carId: "alba", color: "#ffb703", player: false },
+  { id: "r1", alias: "VOS", carId: "calle", color: "#e23d3d", player: true },
+  { id: "r2", alias: "NITO", carId: "naked", color: "#3ec6d6", player: false },
+  { id: "r3", alias: "LILA", carId: "sedan-ev", color: "#efe6d2", player: false },
+  { id: "r4", alias: "KENZO", carId: "furgon", color: "#ffb703", player: false },
 ];
 
 export function formatTime(sec: number): string {
-  if (!Number.isFinite(sec) || sec <= 0 || sec > 600) return "—";
+  if (!Number.isFinite(sec) || sec <= 0 || sec > 900) return "—";
   const m = Math.floor(sec / 60);
   const s = sec - m * 60;
   const whole = Math.floor(s);
@@ -115,6 +151,7 @@ export function formatTime(sec: number): string {
   return m > 0 ? `${m}:${String(whole).padStart(2, "0")}.${String(cs).padStart(2, "0")}` : tail;
 }
 
-export function kmh(speed: number): number {
-  return Math.max(0, Math.round(speed * 3.6));
+export function paceKmh(speed: number, top: number, vmax: number): number {
+  if (top <= 0) return 0;
+  return Math.max(0, Math.round((speed / top) * vmax));
 }
